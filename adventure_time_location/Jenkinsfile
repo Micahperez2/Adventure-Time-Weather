@@ -1,0 +1,51 @@
+pipeline {
+    agent {
+        label "codeql-jdk11"
+    }
+    environment {
+        GITHUB_TOKEN = credentials('jenkins-credential-github-pat')
+    }
+
+    stages {
+        stage('CodeQL Scan') {
+            steps {
+                container("agent") {
+                    sh '''
+                      codeql database create ./codeql-db --language=java --overwrite
+                      codeql database analyze ./codeql-db codeql/java-queries --format=sarifv2.1.0 --output=codeql-results.sarif
+                    '''
+                }
+            }
+        }
+
+        stage('Upload CodeQL Results (PR)') {
+            when {
+                not {
+                    branch 'main'
+                }
+            }
+
+            steps {
+                container("agent") {
+                    sh '''
+                      codeql github upload-results -s=codeql-results.sarif -f=refs/heads/${CHANGE_BRANCH}
+                    '''
+                }
+            }
+        }
+
+        stage('Upload CodeQL Results (main)') {
+            when {
+                branch 'main'
+            }
+
+            steps {
+                container("agent") {
+                    sh '''
+                      codeql github upload-results -s=codeql-results.sarif -f=refs/heads/main
+                    '''
+                }
+            }
+        }
+    }
+}
